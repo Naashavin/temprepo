@@ -1,0 +1,2063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Machine_Doc | Virtual Factory Simulator & Safety HMI</title>
+  <style>
+    /* --- CSS RESET & INDUSTRIAL DESIGN SYSTEM --- */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg-page: #f1f5f9;
+      --bg-panel: #ffffff;
+      --bg-subtle: #f8fafc;
+      --border-color: #cbd5e1;
+      --border-dark: #64748b;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-light: #64748b;
+
+      /* Industrial status accents - pure, high-contrast, non-neon */
+      --status-run: #16a34a;       /* Green */
+      --status-run-bg: #dcfce7;
+      --status-run-border: #86efac;
+
+      --status-warn: #d97706;      /* Amber */
+      --status-warn-bg: #fef3c7;
+      --status-warn-border: #fcd34d;
+
+      --status-stop: #dc2626;      /* Red */
+      --status-stop-bg: #fee2e2;
+      --status-stop-border: #fca5a5;
+
+      --status-idle: #475569;      /* Dark slate / grey */
+      --status-idle-bg: #e2e8f0;
+      --status-idle-border: #cbd5e1;
+
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: "SF Mono", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    }
+
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      line-height: 1.4;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Background tab warning banner */
+    #tabWarningBanner {
+      display: none;
+      background-color: #ef4444;
+      color: #ffffff;
+      text-align: center;
+      padding: 8px 16px;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid #b91c1c;
+      z-index: 1000;
+    }
+
+    /* TOP STATUS BANNER */
+    header.status-bar {
+      background-color: var(--bg-panel);
+      border-bottom: 2px solid var(--border-color);
+      padding: 10px 20px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .hmi-title {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .hmi-title h1 {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--text-main);
+    }
+
+    .hmi-title .subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .banner-center {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* Primary Status Badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 24px;
+      border-radius: 4px;
+      border: 2px solid var(--status-idle-border);
+      background-color: var(--status-idle-bg);
+      color: var(--status-idle);
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+    }
+
+    .status-badge .indicator-bulb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background-color: currentColor;
+      border: 2px solid rgba(0,0,0,0.2);
+    }
+
+    .status-badge.state-run {
+      background-color: var(--status-run-bg);
+      border-color: var(--status-run);
+      color: var(--status-run);
+    }
+
+    .status-badge.state-warning {
+      background-color: var(--status-warn-bg);
+      border-color: var(--status-warn);
+      color: var(--status-warn);
+    }
+
+    .status-badge.state-stop, .status-badge.state-fault {
+      background-color: var(--status-stop-bg);
+      border-color: var(--status-stop);
+      color: var(--status-stop);
+    }
+
+    /* Link & Network Status Bar */
+    .banner-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .link-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      border: 1px solid var(--border-color);
+      background: var(--bg-subtle);
+    }
+
+    .link-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #94a3b8;
+    }
+
+    .link-badge.connected .link-dot { background-color: var(--status-run); }
+    .link-badge.lost .link-dot { background-color: var(--status-stop); }
+    .link-badge.demo .link-dot { background-color: #0284c7; }
+
+    .net-metrics {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-light);
+    }
+
+    /* MAIN THREE-COLUMN WORKSPACE */
+    main.hmi-layout {
+      flex: 1;
+      padding: 16px 20px;
+      display: grid;
+      grid-template-columns: 360px 1fr 380px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (max-width: 1200px) {
+      main.hmi-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* CARD / PANEL STYLING */
+    .hmi-card {
+      background-color: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-header {
+      background-color: #f8fafc;
+      border-bottom: 1px solid var(--border-color);
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-header h2 {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-main);
+    }
+
+    .card-header .header-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      background-color: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 2px;
+    }
+
+    .card-body {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* --- PANEL 1: MACHINE PANEL --- */
+    .motor-visual-container {
+      background-color: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 230px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Base SVG styles */
+    #motorSvg {
+      width: 100%;
+      max-width: 300px;
+      height: 200px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05));
+    }
+
+    .machine-status-readouts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .readout-box {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .readout-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    .readout-value {
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .readout-unit {
+      font-size: 11px;
+      font-weight: normal;
+      color: var(--text-light);
+      margin-left: 2px;
+    }
+
+    .power-lamp-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+    }
+
+    .power-lamp {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: #94a3b8;
+      border: 1px solid #64748b;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .power-lamp.on {
+      background-color: var(--status-run);
+      border-color: #15803d;
+      box-shadow: 0 0 6px rgba(22, 163, 74, 0.4);
+    }
+
+    .power-lamp.fault {
+      background-color: var(--status-stop);
+      border-color: #b91c1c;
+      box-shadow: 0 0 6px rgba(220, 38, 38, 0.4);
+    }
+
+    /* --- PANEL 2: LIVE DATA PANEL --- */
+    .chart-container {
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .chart-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .chart-legend {
+      display: flex;
+      gap: 12px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .legend-line {
+      width: 12px;
+      height: 2px;
+      display: inline-block;
+    }
+
+    #waveformCanvas {
+      width: 100%;
+      height: 170px;
+      background-color: #f8fafc;
+      border: 1px solid var(--border-color);
+      border-radius: 2px;
+      display: block;
+    }
+
+    .live-metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .metric-card {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .metric-card.warn {
+      border-color: var(--status-warn);
+      background-color: var(--status-warn-bg);
+    }
+
+    .metric-card.crit {
+      border-color: var(--status-stop);
+      background-color: var(--status-stop-bg);
+    }
+
+    .metric-card .title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .metric-card .big-val {
+      font-family: var(--font-mono);
+      font-size: 24px;
+      font-weight: 900;
+      color: var(--text-main);
+    }
+
+    .metric-card .limits {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-light);
+    }
+
+    /* Temperature Bar / Gauge */
+    .gauge-bar-track {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 4px;
+      position: relative;
+    }
+
+    .gauge-bar-fill {
+      height: 100%;
+      width: 30%;
+      background: var(--status-run);
+      transition: width 0.3s linear, background-color 0.3s;
+    }
+
+    /* Pi Response Sub-Card */
+    .pi-response-box {
+      background: #f8fafc;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .pi-response-box.active {
+      border-left: 4px solid #0284c7;
+    }
+
+    .pi-response-title {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .pi-response-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .pi-field {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .pi-field .label {
+      font-size: 9px;
+      color: var(--text-light);
+      text-transform: uppercase;
+    }
+
+    .pi-field .val {
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .pi-reason-row {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: #ffffff;
+      padding: 4px 8px;
+      border-radius: 2px;
+      border: 1px solid #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* --- PANEL 3: CONTROL PANEL --- */
+    .btn-group-machine {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .hmi-btn {
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 12px 14px;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background-color 0.1s, border-color 0.1s, transform 0.05s;
+      user-select: none;
+    }
+
+    .hmi-btn:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    .hmi-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .btn-start {
+      background-color: var(--status-run);
+      color: #ffffff;
+      border-color: #15803d;
+    }
+    .btn-start:hover:not(:disabled) { background-color: #15803d; }
+
+    .btn-stop {
+      background-color: var(--status-stop);
+      color: #ffffff;
+      border-color: #b91c1c;
+    }
+    .btn-stop:hover:not(:disabled) { background-color: #b91c1c; }
+
+    .btn-subtle {
+      background-color: #e2e8f0;
+      color: var(--text-main);
+      border-color: #cbd5e1;
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .btn-subtle:hover:not(:disabled) { background-color: #cbd5e1; }
+
+    .btn-active-fault {
+      background-color: #fee2e2 !important;
+      color: #dc2626 !important;
+      border-color: #ef4444 !important;
+    }
+
+    /* Slider Group */
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 10px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+    }
+
+    .control-row-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .hmi-slider {
+      width: 100%;
+      height: 6px;
+      accent-color: #0f172a;
+      cursor: pointer;
+    }
+
+    /* Fault Injection Group */
+    .fault-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .fault-btn-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    /* Toggle Switches */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+    }
+
+    .switch-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .switch-subtext {
+      font-size: 10px;
+      font-weight: normal;
+      color: var(--text-light);
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 22px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider-toggle {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #cbd5e1;
+      border-radius: 22px;
+      transition: .2s;
+    }
+
+    .slider-toggle:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      border-radius: 50%;
+      transition: .2s;
+    }
+
+    input:checked + .slider-toggle {
+      background-color: #dc2626; /* Warning red for safety intrusion */
+    }
+
+    input:checked + .slider-toggle:before {
+      transform: translateX(22px);
+    }
+
+    /* Pi Connection Settings */
+    .net-config-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 10px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 6px;
+    }
+
+    .hmi-input {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 6px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      background: #ffffff;
+      color: var(--text-main);
+    }
+
+    .hmi-input:focus {
+      outline: none;
+      border-color: #0f172a;
+    }
+
+    /* Event Log Table */
+    .event-log-container {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .log-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    #eventLog {
+      background-color: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      height: 110px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1.35;
+      padding: 6px 8px;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .log-entry {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid #f1f5f9;
+      padding: 1px 0;
+    }
+
+    .log-entry .time {
+      color: var(--text-light);
+      flex-shrink: 0;
+    }
+
+    .log-entry.info .msg { color: var(--text-main); }
+    .log-entry.warn .msg { color: var(--status-warn); font-weight: 700; }
+    .log-entry.fault .msg { color: var(--status-stop); font-weight: 700; }
+    .log-entry.trip .msg { color: #dc2626; font-weight: 800; }
+
+    /* Interlock Warning Tooltip / Message */
+    #interlockNotice {
+      display: none;
+      padding: 6px 10px;
+      background-color: #fee2e2;
+      border: 1px solid #f87171;
+      border-radius: 3px;
+      color: #991b1b;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      animation: shake 0.3s;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-4px); }
+      40%, 80% { transform: translateX(4px); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BACKGROUND TAB WARNING BANNER -->
+  <div id="tabWarningBanner">
+    &#9888; WARNING: Tab is in background. Browsers throttle timers in hidden tabs. Keep this tab in the foreground during the demo.
+  </div>
+
+  <!-- TOP STATUS BANNER -->
+  <header class="status-bar">
+    <div class="hmi-title">
+      <h1>Machine_Doc</h1>
+      <div class="subtitle">CELL-04 // MOTOR 15kW DRIVE // CONTROLLER: RASPBERRY PI 4B</div>
+    </div>
+
+    <div class="banner-center">
+      <div id="mainStatusBadge" class="status-badge">
+        <span class="indicator-bulb"></span>
+        <span id="mainStatusText">STOP</span>
+      </div>
+    </div>
+
+    <div class="banner-right">
+      <div id="linkBadge" class="link-badge demo">
+        <span class="link-dot"></span>
+        <span id="linkStatusText">Local Demo Mode (No Pi)</span>
+      </div>
+      <div class="net-metrics">
+        Sent: <span id="metricSeq">0</span> | Missed: <span id="metricMissed">0</span> | RTT: <span id="metricRtt">--</span> ms
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN 3-PANEL LAYOUT -->
+  <main class="hmi-layout">
+
+    <!-- ==================== AREA 1: MACHINE PANEL ==================== -->
+    <section class="hmi-card">
+      <div class="card-header">
+        <h2>1. Machine Panel</h2>
+        <span class="header-tag">MTR-1502</span>
+      </div>
+      <div class="card-body">
+        
+        <!-- Animated Motor SVG -->
+        <div class="motor-visual-container">
+          <svg id="motorSvg" viewBox="0 0 340 220" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="ventPattern" width="4" height="6" patternUnits="userSpaceOnUse">
+                <rect width="2" height="6" fill="#334155" />
+              </pattern>
+            </defs>
+
+            <!-- Vibration jitter applied to this group -->
+            <g id="motorChassisGroup" transform="translate(0, 0)">
+              <!-- Motor Mounting Base -->
+              <rect x="40" y="165" width="220" height="24" fill="#334155" rx="2" />
+              <rect x="55" y="189" width="30" height="12" fill="#1e293b" />
+              <rect x="215" y="189" width="30" height="12" fill="#1e293b" />
+              <!-- Mounting Bolts -->
+              <circle cx="70" cy="195" r="3" fill="#cbd5e1" />
+              <circle cx="230" cy="195" r="3" fill="#cbd5e1" />
+              
+              <!-- Stator Casing (Motor Main Body) -->
+              <rect x="50" y="55" width="180" height="110" fill="#475569" rx="6" />
+              
+              <!-- Cooling Fins on Motor Casing -->
+              <line x1="60" y1="70" x2="220" y2="70" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+              <line x1="60" y1="85" x2="220" y2="85" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+              <line x1="60" y1="100" x2="220" y2="100" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+              <line x1="60" y1="115" x2="220" y2="115" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+              <line x1="60" y1="130" x2="220" y2="130" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+              <line x1="60" y1="145" x2="220" y2="145" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+
+              <!-- Terminal Junction Box on Top -->
+              <rect x="110" y="28" width="60" height="27" fill="#64748b" rx="2" />
+              <rect x="120" y="24" width="40" height="4" fill="#334155" />
+              <!-- Cable Gland -->
+              <rect x="100" y="38" width="10" height="8" fill="#1e293b" />
+
+              <!-- Bearing End Bells -->
+              <rect x="42" y="65" width="14" height="90" fill="#64748b" rx="3" />
+              <rect x="224" y="65" width="14" height="90" fill="#64748b" rx="3" />
+
+              <!-- Output Shaft -->
+              <rect x="238" y="102" width="55" height="16" fill="#94a3b8" />
+              <line x1="240" y1="110" x2="290" y2="110" stroke="#cbd5e1" stroke-width="2" />
+
+              <!-- Shaft Keyway -->
+              <rect x="260" y="103" width="18" height="4" fill="#64748b" />
+
+              <!-- Drive Coupling / Flywheel -->
+              <rect x="290" y="80" width="22" height="60" fill="#475569" rx="2" />
+              <line x1="301" y1="80" x2="301" y2="140" stroke="#64748b" stroke-width="2" />
+
+              <!-- Rear Fan Shroud -->
+              <path d="M 42 60 L 22 75 L 22 145 L 42 160 Z" fill="#334155" />
+              <!-- Shroud Vents -->
+              <rect x="25" y="80" width="12" height="60" fill="url(#ventPattern)" />
+            </g>
+
+            <!-- Rotating Fan Blades Graphic (Rendered through vent cutout) -->
+            <g id="fanRotorGroup" transform="translate(32, 110)">
+              <!-- Dynamically rotated around (0,0) -->
+              <circle cx="0" cy="0" r="14" fill="#64748b" />
+              <line x1="-12" y1="0" x2="12" y2="0" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round" />
+              <line x1="0" y1="-12" x2="0" y2="12" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round" />
+              <line x1="-8" y1="-8" x2="8" y2="8" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" />
+              <line x1="-8" y1="8" x2="8" y2="-8" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" />
+            </g>
+
+            <!-- Output Shaft Rotation Indicator (Wheel on right) -->
+            <g id="pulleyRotorGroup" transform="translate(301, 110)">
+              <circle cx="0" cy="0" r="18" fill="none" stroke="#64748b" stroke-width="2" />
+              <circle cx="0" cy="0" r="4" fill="#cbd5e1" />
+              <!-- Marker notch to see rotation -->
+              <circle cx="12" cy="0" r="3" fill="#ffffff" />
+            </g>
+          </svg>
+        </div>
+
+        <!-- Readouts Row -->
+        <div class="machine-status-readouts">
+          <div class="readout-box">
+            <span class="readout-label">Speed</span>
+            <div class="readout-value">
+              <span id="rpmDisplay">0</span><span class="readout-unit">RPM</span>
+            </div>
+          </div>
+          <div class="readout-box">
+            <span class="readout-label">Frequency</span>
+            <div class="readout-value">
+              <span id="freqDisplay">0.0</span><span class="readout-unit">Hz</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Power Lamp & Drive Status -->
+        <div class="power-lamp-row">
+          <div>
+            <span id="powerLamp" class="power-lamp"></span>
+            <strong id="powerLampText">POWER OFF</strong>
+          </div>
+          <span id="relayStatusBadge" class="header-tag">RELAY: CLOSED</span>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ==================== AREA 2: LIVE DATA PANEL ==================== -->
+    <section class="hmi-card">
+      <div class="card-header">
+        <h2>2. Live Data Panel</h2>
+        <span class="header-tag">TELEMETRY (100 Hz)</span>
+      </div>
+      <div class="card-body">
+
+        <!-- Vibration Waveform Canvas -->
+        <div class="chart-container">
+          <div class="chart-header-row">
+            <span>ACCELEROMETER WAVEFORM (Z-AXIS, 5-SEC WINDOW)</span>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-line" style="background:#0f172a"></span> a<sub>z</sub> (g)</span>
+              <span class="legend-item"><span class="legend-line" style="background:var(--status-warn);border-top:1px dashed var(--status-warn)"></span> Warn 0.40g</span>
+              <span class="legend-item"><span class="legend-line" style="background:var(--status-stop);border-top:1px dashed var(--status-stop)"></span> Crit 0.55g</span>
+            </div>
+          </div>
+          <canvas id="waveformCanvas" width="560" height="170"></canvas>
+        </div>
+
+        <!-- Live Metrics: Vibration RMS & Temperature -->
+        <div class="live-metrics-grid">
+          
+          <!-- Vibration RMS Metric -->
+          <div id="vibrationMetricCard" class="metric-card">
+            <span class="title">Vibration RMS (Dynamic)</span>
+            <div class="big-val">
+              <span id="rmsValueDisplay">0.00</span> <span style="font-size:12px; font-weight:normal; color:var(--text-light)">g</span>
+            </div>
+            <div class="limits">
+              Warn: 0.40 g | Crit: 0.55 g
+            </div>
+          </div>
+
+          <!-- Motor Temperature Metric -->
+          <div id="tempMetricCard" class="metric-card">
+            <span class="title">Motor Temperature</span>
+            <div class="big-val">
+              <span id="tempValueDisplay">30.0</span> <span style="font-size:12px; font-weight:normal; color:var(--text-light)">°C</span>
+            </div>
+            <div class="gauge-bar-track">
+              <div id="tempBarFill" class="gauge-bar-fill" style="width: 25%;"></div>
+            </div>
+            <div class="limits">
+              Warn: 60 °C | Crit: 75 °C
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Pi Safety Controller Response Box -->
+        <div id="piResponseCard" class="pi-response-box active">
+          <div class="pi-response-title">
+            <span>Raspberry Pi Controller State</span>
+            <span id="piLastResponseAge" style="font-family:var(--font-mono);font-size:9px;color:var(--text-light)">Last: --</span>
+          </div>
+          <div class="pi-response-grid">
+            <div class="pi-field">
+              <span class="label">State</span>
+              <span id="piStateVal" class="val">--</span>
+            </div>
+            <div class="pi-field">
+              <span class="label">Relay</span>
+              <span id="piRelayVal" class="val">--</span>
+            </div>
+            <div class="pi-field">
+              <span class="label">Pi RMS</span>
+              <span id="piRmsVal" class="val">--</span>
+            </div>
+            <div class="pi-field">
+              <span class="label">Zone Safe</span>
+              <span id="piZoneVal" class="val">--</span>
+            </div>
+          </div>
+          <div class="pi-reason-row">
+            Reason: <span id="piReasonVal">Awaiting controller packet...</span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ==================== AREA 3: CONTROL PANEL ==================== -->
+    <section class="hmi-card">
+      <div class="card-header">
+        <h2>3. Control Panel</h2>
+        <span class="header-tag">OPERATOR STATION</span>
+      </div>
+      <div class="card-body">
+
+        <!-- Interlock notice if user tries to start during trip -->
+        <div id="interlockNotice">
+          &#9888; INTERLOCK ACTIVE: Safety relay is open. Reset faults before starting.
+        </div>
+
+        <!-- START / STOP Machine Buttons -->
+        <div class="btn-group-machine">
+          <button id="btnStart" class="hmi-btn btn-start">
+            &#9654; START
+          </button>
+          <button id="btnStop" class="hmi-btn btn-stop">
+            &#9632; STOP
+          </button>
+        </div>
+
+        <!-- Motor Load Slider -->
+        <div class="control-row">
+          <div class="control-row-header">
+            <span>Mechanical Load</span>
+            <span><strong id="loadValueText">50</strong> %</span>
+          </div>
+          <input type="range" id="loadSlider" class="hmi-slider" min="0" max="100" value="50" step="1">
+        </div>
+
+        <!-- Fault Injection -->
+        <div class="fault-group">
+          <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Fault Injection</span>
+          <div class="fault-btn-grid">
+            <button id="btnBearingFault" class="hmi-btn btn-subtle">
+              Bearing Fault
+            </button>
+            <button id="btnOverheatFault" class="hmi-btn btn-subtle">
+              Overheat Fault
+            </button>
+          </div>
+          <button id="btnClearFaults" class="hmi-btn btn-subtle" style="width:100%;background:#e2e8f0;">
+            Clear All Faults
+          </button>
+        </div>
+
+        <!-- Safety Zone Intrusion Simulation Toggle -->
+        <div class="toggle-row">
+          <div class="switch-label">
+            <span>Simulate Worker in Zone</span>
+            <span class="switch-subtext">Restricted safety curtain violation</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggleWorkerZone">
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <!-- Raspberry Pi Connection Config -->
+        <div class="net-config-box">
+          <div class="control-row-header">
+            <span>Raspberry Pi Network Address</span>
+          </div>
+          <div class="input-group">
+            <input type="text" id="piAddressInput" class="hmi-input" placeholder="http://raspberrypi.local:5000">
+            <button id="btnConnectToggle" class="hmi-btn btn-subtle" style="padding:4px 10px;">
+              Disconnect
+            </button>
+          </div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="event-log-container">
+          <div class="log-header">
+            <span>Event &amp; Safety Audit Log</span>
+            <span style="font-size:9px;color:var(--text-light)">Last 20 events</span>
+          </div>
+          <div id="eventLog">
+            <!-- Dynamic entries inserted here -->
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==================== SIMULATOR ENGINE (JAVASCRIPT) ==================== -->
+  <script>
+    (function() {
+      'use strict';
+
+      /* -------------------------------------------------------------
+       * 1. CONFIGURATION & STATE
+       * ------------------------------------------------------------- */
+      const CONFIG = {
+        sampleRateHz: 100,           // 100 samples / sec
+        sampleIntervalMs: 10,        // 10 ms per sample
+        packetIntervalMs: 100,       // POST to Pi every 100 ms (10 samples)
+        windowSeconds: 5,            // 5 second waveform history
+        nominalRpm: 1500,
+        accelRpmPerSec: 750,         // Ramp to 1500 in 2.0s
+        coastRpmPerSec: 400,         // Coast to 0 in 3.75s
+        ambientTemp: 30.0,           // Ambient °C
+        overheatRatePerSec: 1.5,     // +1.5 °C/s during overheat fault
+        normVibBaseline: 0.15,       // Base vibration ~0.15 g at 1500 RPM
+        faultVibMultiplier: 4.0,     // 3-5x amplitude increase on bearing fault
+        faultRampDurationSec: 1.5,   // Smooth 1.5s transition
+        warnRmsThreshold: 0.40,
+        critRmsThreshold: 0.55,
+        warnTempThreshold: 60.0,
+        critTempThreshold: 75.0,
+        fetchTimeoutMs: 500,
+        linkLossTimeoutMs: 1000
+      };
+
+      // Persistent Address Key
+      const STORAGE_KEY_PI_ADDR = 'pi_machine_sim_address';
+
+      // Simulation Runtime State
+      const state = {
+        // Machine state
+        commandedRun: false,
+        actualRpm: 0.0,
+        targetRpm: 0.0,
+        loadPercent: 50,
+        rotorAngleRad: 0.0,
+        temperature: CONFIG.ambientTemp,
+        relayEnergized: true,
+
+        // Fault injection flags & ramping
+        bearingFaultActive: false,
+        overheatFaultActive: false,
+        faultRampProgress: 0.0,      // 0.0 (normal) to 1.0 (full fault)
+        
+        // Safety zone
+        workerInZone: false,
+
+        // Networking & Pi Connection
+        piConnectedMode: true,       // If true, attempt POST to Pi address
+        piAddress: 'http://raspberrypi.local:5000',
+        seqCounter: 0,
+        missedPackets: 0,
+        lastSuccessTime: 0,
+        linkStatus: 'DEMO',          // 'DEMO', 'CONNECTED', 'LOST'
+        rttWindow: [],
+
+        // Last telemetry from Pi
+        piState: {
+          state: 'STOP',
+          relay: true,
+          reason: 'Initializing',
+          rms: 0.0,
+          gas: 0.0,
+          worker_in_zone: false
+        },
+
+        // Local demo calculations (when disconnected from Pi)
+        localRms: 0.0,
+        localState: 'STOP',
+        localReason: 'Machine stopped'
+      };
+
+      // Buffers for 100 Hz accelerometer data
+      const pendingAccelBatch = [];  // Batch of 10 samples sent to Pi
+      const waveformBuffer = [];     // Rolling ~500 samples for canvas plot (5 sec)
+      const maxWaveformPoints = CONFIG.sampleRateHz * CONFIG.windowSeconds;
+
+      // 1-second rolling buffer for local RMS calculation (100 samples)
+      const rmsHistoryBuffer = [];
+      const maxRmsPoints = CONFIG.sampleRateHz * 1; // 1 second
+
+      /* -------------------------------------------------------------
+       * 2. DOM ELEMENT REFERENCES
+       * ------------------------------------------------------------- */
+      const els = {
+        tabWarningBanner: document.getElementById('tabWarningBanner'),
+        mainStatusBadge: document.getElementById('mainStatusBadge'),
+        mainStatusText: document.getElementById('mainStatusText'),
+        linkBadge: document.getElementById('linkBadge'),
+        linkStatusText: document.getElementById('linkStatusText'),
+        metricSeq: document.getElementById('metricSeq'),
+        metricMissed: document.getElementById('metricMissed'),
+        metricRtt: document.getElementById('metricRtt'),
+        motorChassisGroup: document.getElementById('motorChassisGroup'),
+        fanRotorGroup: document.getElementById('fanRotorGroup'),
+        pulleyRotorGroup: document.getElementById('pulleyRotorGroup'),
+        rpmDisplay: document.getElementById('rpmDisplay'),
+        freqDisplay: document.getElementById('freqDisplay'),
+        powerLamp: document.getElementById('powerLamp'),
+        powerLampText: document.getElementById('powerLampText'),
+        relayStatusBadge: document.getElementById('relayStatusBadge'),
+        waveformCanvas: document.getElementById('waveformCanvas'),
+        rmsValueDisplay: document.getElementById('rmsValueDisplay'),
+        vibrationMetricCard: document.getElementById('vibrationMetricCard'),
+        tempValueDisplay: document.getElementById('tempValueDisplay'),
+        tempBarFill: document.getElementById('tempBarFill'),
+        tempMetricCard: document.getElementById('tempMetricCard'),
+        piResponseCard: document.getElementById('piResponseCard'),
+        piLastResponseAge: document.getElementById('piLastResponseAge'),
+        piStateVal: document.getElementById('piStateVal'),
+        piRelayVal: document.getElementById('piRelayVal'),
+        piRmsVal: document.getElementById('piRmsVal'),
+        piZoneVal: document.getElementById('piZoneVal'),
+        piReasonVal: document.getElementById('piReasonVal'),
+        interlockNotice: document.getElementById('interlockNotice'),
+        btnStart: document.getElementById('btnStart'),
+        btnStop: document.getElementById('btnStop'),
+        loadSlider: document.getElementById('loadSlider'),
+        loadValueText: document.getElementById('loadValueText'),
+        btnBearingFault: document.getElementById('btnBearingFault'),
+        btnOverheatFault: document.getElementById('btnOverheatFault'),
+        btnClearFaults: document.getElementById('btnClearFaults'),
+        toggleWorkerZone: document.getElementById('toggleWorkerZone'),
+        piAddressInput: document.getElementById('piAddressInput'),
+        btnConnectToggle: document.getElementById('btnConnectToggle'),
+        eventLog: document.getElementById('eventLog')
+      };
+
+      /* -------------------------------------------------------------
+       * 3. INITIALIZATION & LOCAL STORAGE
+       * ------------------------------------------------------------- */
+      const savedAddr = localStorage.getItem(STORAGE_KEY_PI_ADDR);
+      if (savedAddr !== null) {
+        state.piAddress = savedAddr.trim();
+        els.piAddressInput.value = state.piAddress;
+      } else {
+        els.piAddressInput.value = state.piAddress;
+      }
+
+      // If address is empty at start, default to demo mode
+      if (!state.piAddress) {
+        state.piConnectedMode = false;
+        updateLinkStatus('DEMO');
+      }
+
+      logEvent('info', 'Simulator initialized. Ready.');
+
+      /* -------------------------------------------------------------
+       * 4. BACKGROUND-RESILIENT WEB WORKER SCHEDULER
+       * ------------------------------------------------------------- */
+      // Create inline Web Worker from Blob to guarantee 10ms ticks even when backgrounded
+      const workerBlobCode = `
+        let intervalId = null;
+        self.onmessage = function(e) {
+          if (e.data === 'start') {
+            if (!intervalId) {
+              intervalId = setInterval(function() {
+                self.postMessage('tick');
+              }, 10); // 100 Hz = 10ms
+            }
+          } else if (e.data === 'stop') {
+            if (intervalId) {
+              clearInterval(intervalId);
+              intervalId = null;
+            }
+          }
+        };
+      `;
+
+      let worker = null;
+      try {
+        const blob = new Blob([workerBlobCode], { type: 'application/javascript' });
+        worker = new Worker(URL.createObjectURL(blob));
+        worker.onmessage = function(e) {
+          if (e.data === 'tick') {
+            onSimulationTick();
+          }
+        };
+        worker.postMessage('start');
+      } catch (err) {
+        console.warn('Web Worker creation failed; falling back to setInterval:', err);
+        setInterval(onSimulationTick, 10);
+      }
+
+      // Monitor tab visibility
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+          els.tabWarningBanner.style.display = 'block';
+        } else {
+          els.tabWarningBanner.style.display = 'none';
+        }
+      });
+
+      /* -------------------------------------------------------------
+       * 5. SIMULATION PHYSICS ENGINE (100 Hz = 10 ms step)
+       * ------------------------------------------------------------- */
+      let tickSubCounter = 0; // Counts 0..9 for 100ms packet batches
+      const dt = 0.01;        // 10 ms in seconds
+
+      function onSimulationTick() {
+        // A. RPM Physics (Smooth ramp & coasting)
+        updateRpmPhysics();
+
+        // B. Temperature Physics
+        updateTemperaturePhysics();
+
+        // C. Fault Ramping (1.5s smooth transition)
+        updateFaultRamps();
+
+        // D. Generate 1 Accelerometer sample [ax, ay, az]
+        const sample = generateAccelSample();
+
+        // Accumulate sample into batch for Pi transmission
+        pendingAccelBatch.push(sample);
+
+        // Keep rolling waveform buffer for canvas
+        waveformBuffer.push(sample);
+        if (waveformBuffer.length > maxWaveformPoints) {
+          waveformBuffer.shift();
+        }
+
+        // Keep rolling buffer for local 1-sec RMS
+        rmsHistoryBuffer.push(sample);
+        if (rmsHistoryBuffer.length > maxRmsPoints) {
+          rmsHistoryBuffer.shift();
+        }
+
+        // E. Every 10 ticks (100 ms = 10 Hz), execute network or local safety check
+        tickSubCounter++;
+        if (tickSubCounter >= 10) {
+          tickSubCounter = 0;
+          onPacketInterval();
+        }
+      }
+
+      function updateRpmPhysics() {
+        // If relay is tripped / de-energized, power is cut immediately -> target 0 RPM
+        if (!state.relayEnergized) {
+          state.targetRpm = 0.0;
+        } else if (state.commandedRun) {
+          // Running: 1500 RPM nominal with slight load droop
+          const loadDroop = (state.loadPercent / 100) * 80; // 0 to 80 RPM droop
+          state.targetRpm = Math.max(0, CONFIG.nominalRpm - loadDroop);
+        } else {
+          state.targetRpm = 0.0;
+        }
+
+        // Ramp actual RPM toward target RPM
+        if (state.actualRpm < state.targetRpm) {
+          state.actualRpm += CONFIG.accelRpmPerSec * dt;
+          if (state.actualRpm > state.targetRpm) state.actualRpm = state.targetRpm;
+        } else if (state.actualRpm > state.targetRpm) {
+          state.actualRpm -= CONFIG.coastRpmPerSec * dt;
+          if (state.actualRpm < state.targetRpm) state.actualRpm = state.targetRpm;
+        }
+
+        // Update rotor phase angle (rad)
+        const rotationFreqHz = state.actualRpm / 60.0;
+        state.rotorAngleRad += (2.0 * Math.PI * rotationFreqHz) * dt;
+        if (state.rotorAngleRad > 2 * Math.PI) {
+          state.rotorAngleRad -= 2 * Math.PI;
+        }
+      }
+
+      function updateFaultRamps() {
+        // Smoothly ramp fault progress over 1.5 seconds
+        const rampStep = dt / CONFIG.faultRampDurationSec;
+        if (state.bearingFaultActive) {
+          state.faultRampProgress = Math.min(1.0, state.faultRampProgress + rampStep);
+        } else {
+          state.faultRampProgress = Math.max(0.0, state.faultRampProgress - rampStep);
+        }
+      }
+
+      function updateTemperaturePhysics() {
+        // Steady state temp based on load: ~45°C at 0% to ~57°C at 100%
+        const steadyStateTemp = 45.0 + (state.loadPercent / 100) * 12.0;
+
+        if (state.actualRpm > 50) {
+          // Motor running: rises towards steady state (thermal time constant ~45s)
+          const heatRate = (steadyStateTemp - state.temperature) / 45.0 * (state.actualRpm / CONFIG.nominalRpm);
+          state.temperature += heatRate * dt;
+        } else {
+          // Motor stopped: cools slowly toward ambient 30°C (time constant ~70s)
+          const coolRate = (CONFIG.ambientTemp - state.temperature) / 70.0;
+          state.temperature += coolRate * dt;
+        }
+
+        // Overheat fault: adds steady rise +1.5 °C / second
+        if (state.overheatFaultActive) {
+          state.temperature += CONFIG.overheatRatePerSec * dt;
+        }
+      }
+
+      function generateAccelSample() {
+        // High quality pseudo-random gaussian-like noise
+        const nX = (Math.random() - 0.5) * 0.02;
+        const nY = (Math.random() - 0.5) * 0.02;
+        const nZ = (Math.random() - 0.5) * 0.03;
+
+        // RPM factor: vibration scales with actual rotational speed
+        const speedRatio = state.actualRpm / CONFIG.nominalRpm;
+
+        // Normal base amplitude (scales slightly with load)
+        const loadVibFactor = 0.85 + (state.loadPercent / 100) * 0.3; // 0.85 to 1.15
+        const baseAmp = CONFIG.normVibBaseline * loadVibFactor * speedRatio;
+
+        // Fault amplitude multiplier: ramps smoothly from 1.0 to CONFIG.faultVibMultiplier (4.0x)
+        const currentMultiplier = 1.0 + (CONFIG.faultVibMultiplier - 1.0) * state.faultRampProgress;
+        const currentAmp = baseAmp * currentMultiplier;
+
+        // Harmonic content
+        const theta = state.rotorAngleRad;
+        
+        // Bearing fault adds 2nd harmonic (impact vibration at 2x running speed)
+        const harmonic2Amp = (state.faultRampProgress > 0) ? (currentAmp * 0.45 * state.faultRampProgress) : 0;
+        const vibZ = (currentAmp * Math.sin(theta)) + (harmonic2Amp * Math.sin(2 * theta + 0.5)) + nZ;
+        
+        // Z axis has 1.0g gravity static offset
+        const az = 1.0 + vibZ;
+
+        // X and Y have small orthogonal projections and small eccentric noise
+        const ax = (currentAmp * 0.28 * Math.cos(theta)) + nX;
+        const ay = (currentAmp * 0.22 * Math.sin(theta + Math.PI / 4)) + nY;
+
+        // Round to 4 decimal places for clean network transmission
+        return [
+          Number(ax.toFixed(4)),
+          Number(ay.toFixed(4)),
+          Number(az.toFixed(4))
+        ];
+      }
+
+      /* -------------------------------------------------------------
+       * 6. PACKET DISPATCH & CONTROLLER COMMUNICATION (100 ms)
+       * ------------------------------------------------------------- */
+      let isFetchInFlight = false;
+
+      function onPacketInterval() {
+        // Extract 10 samples from batch
+        const samplesToSend = pendingAccelBatch.splice(0, pendingAccelBatch.length);
+        state.seqCounter++;
+
+        // Prepare packet
+        const packet = {
+          seq: state.seqCounter,
+          t: Number((Date.now() / 1000).toFixed(3)),
+          running: state.actualRpm > 10,
+          rpm: Math.round(state.actualRpm),
+          load: state.loadPercent,
+          accel: samplesToSend,
+          motor_temp: Number(state.temperature.toFixed(1)),
+          worker_in_zone_sim: state.workerInZone
+        };
+
+        // Always calculate local RMS for fallback / local verification
+        calculateLocalSafetyMetrics();
+
+        // If in Local Demo Mode (no Pi address or disconnected), evaluate locally
+        if (!state.piConnectedMode || !state.piAddress.trim()) {
+          runLocalDemoEvaluation();
+          return;
+        }
+
+        // Otherwise, send to Raspberry Pi via HTTP POST
+        sendPacketToPi(packet);
+      }
+
+      function calculateLocalSafetyMetrics() {
+        if (rmsHistoryBuffer.length === 0) {
+          state.localRms = 0.0;
+          return;
+        }
+
+        // 1-second dynamic RMS: remove 1.0g static gravity mean from Z
+        let sumZ = 0;
+        for (let i = 0; i < rmsHistoryBuffer.length; i++) {
+          sumZ += rmsHistoryBuffer[i][2];
+        }
+        const meanZ = sumZ / rmsHistoryBuffer.length;
+
+        let sumSquares = 0;
+        for (let i = 0; i < rmsHistoryBuffer.length; i++) {
+          const dynZ = rmsHistoryBuffer[i][2] - meanZ;
+          sumSquares += dynZ * dynZ;
+        }
+        state.localRms = Math.sqrt(sumSquares / rmsHistoryBuffer.length);
+      }
+
+      function runLocalDemoEvaluation() {
+        updateLinkStatus('DEMO');
+
+        let determinedState = 'STOP';
+        let relayClosed = true;
+        let reason = 'All normal';
+
+        // Check safety rules locally
+        if (state.workerInZone) {
+          determinedState = 'STOP';
+          relayClosed = false;
+          reason = 'CRITICAL: Worker inside restricted safety zone';
+        } else if (state.localRms >= CONFIG.critRmsThreshold) {
+          determinedState = 'FAULT';
+          relayClosed = false;
+          reason = `CRITICAL: Vibration RMS (${state.localRms.toFixed(2)}g) >= ${CONFIG.critRmsThreshold}g`;
+        } else if (state.temperature >= CONFIG.critTempThreshold) {
+          determinedState = 'FAULT';
+          relayClosed = false;
+          reason = `CRITICAL: Motor temperature (${state.temperature.toFixed(1)}°C) >= ${CONFIG.critTempThreshold}°C`;
+        } else if (state.localRms >= CONFIG.warnRmsThreshold) {
+          determinedState = 'WARNING';
+          relayClosed = true;
+          reason = `WARNING: Vibration RMS elevated (${state.localRms.toFixed(2)}g)`;
+        } else if (state.temperature >= CONFIG.warnTempThreshold) {
+          determinedState = 'WARNING';
+          relayClosed = true;
+          reason = `WARNING: Motor temperature high (${state.temperature.toFixed(1)}°C)`;
+        } else if (state.commandedRun || state.actualRpm > 10) {
+          determinedState = 'RUN';
+          relayClosed = true;
+          reason = 'Normal operation';
+        } else {
+          determinedState = 'STOP';
+          relayClosed = true;
+          reason = 'Machine stopped normally';
+        }
+
+        // Apply Relay Interlock in Demo Mode
+        applySafetyRelayAction(relayClosed, determinedState, reason);
+
+        // Update Pi Box display to mirror local decision
+        state.piState = {
+          state: determinedState,
+          relay: relayClosed,
+          reason: reason + ' [Local Eval]',
+          rms: Number(state.localRms.toFixed(2)),
+          gas: 0.12,
+          worker_in_zone: state.workerInZone
+        };
+
+        updateHmiVisuals(determinedState);
+      }
+
+      function sendPacketToPi(packet) {
+        let endpoint = state.piAddress.trim();
+        if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+          endpoint = 'http://' + endpoint;
+        }
+        if (endpoint.endsWith('/')) {
+          endpoint = endpoint.slice(0, -1);
+        }
+        const url = endpoint + '/data';
+
+        const startTime = Date.now();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), CONFIG.fetchTimeoutMs);
+
+        // Content-Type: text/plain prevents CORS preflight OPTIONS request
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(packet),
+          signal: controller.signal
+        })
+        .then(response => {
+          clearTimeout(timeoutId);
+          if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+          }
+          return response.json();
+        })
+        .then(piReply => {
+          const rtt = Date.now() - startTime;
+          handlePiSuccess(piReply, rtt);
+        })
+        .catch(err => {
+          clearTimeout(timeoutId);
+          handlePiFailure(err);
+        });
+      }
+
+      function handlePiSuccess(reply, rtt) {
+        state.lastSuccessTime = Date.now();
+        
+        // RTT average window
+        state.rttWindow.push(rtt);
+        if (state.rttWindow.length > 20) state.rttWindow.shift();
+        const avgRtt = Math.round(state.rttWindow.reduce((a, b) => a + b, 0) / state.rttWindow.length);
+        els.metricRtt.textContent = avgRtt;
+
+        // If link was previously lost, log restored event
+        if (state.linkStatus !== 'CONNECTED') {
+          updateLinkStatus('CONNECTED');
+          logEvent('info', 'Pi link restored (Connected)');
+        }
+
+        // Save Pi response
+        state.piState = reply;
+
+        // Check if Pi commanded relay trip
+        const relayClosed = (reply.relay === true);
+        applySafetyRelayAction(relayClosed, reply.state || 'STOP', reply.reason || '');
+
+        updateHmiVisuals(reply.state || 'STOP');
+      }
+
+      function handlePiFailure(err) {
+        state.missedPackets++;
+        els.metricMissed.textContent = state.missedPackets;
+
+        // Check if > 1.0 second has passed without a successful response
+        const elapsedSinceSuccess = Date.now() - state.lastSuccessTime;
+        if (elapsedSinceSuccess > CONFIG.linkLossTimeoutMs) {
+          if (state.linkStatus !== 'LOST') {
+            updateLinkStatus('LOST');
+            logEvent('fault', 'Pi link lost - timeout > 1.0s');
+          }
+          // In link lost state, fallback to local demo evaluation so HMI remains responsive
+          runLocalDemoEvaluation();
+        }
+      }
+
+      /* -------------------------------------------------------------
+       * 7. SAFETY INTERLOCK & RELAY BEHAVIOR
+       * ------------------------------------------------------------- */
+      function applySafetyRelayAction(relayClosed, currentState, reason) {
+        const wasEnergized = state.relayEnergized;
+        state.relayEnergized = relayClosed;
+
+        if (wasEnergized && !relayClosed) {
+          // TRIP EVENT: Relay de-energized by controller!
+          state.commandedRun = false;
+          logEvent('trip', `[TRIP] Relay de-energized by safety controller: ${reason}`);
+        } else if (!wasEnergized && relayClosed) {
+          logEvent('info', '[RESET] Safety relay energized / interlock clear.');
+        }
+
+        // Update Relay badge
+        if (state.relayEnergized) {
+          els.relayStatusBadge.textContent = 'RELAY: CLOSED';
+          els.relayStatusBadge.style.backgroundColor = '#e2e8f0';
+          els.relayStatusBadge.style.color = '#0f172a';
+        } else {
+          els.relayStatusBadge.textContent = 'RELAY: OPEN (TRIPPED)';
+          els.relayStatusBadge.style.backgroundColor = '#fee2e2';
+          els.relayStatusBadge.style.color = '#b91c1c';
+        }
+      }
+
+      /* -------------------------------------------------------------
+       * 8. HMI VISUALS & ANIMATION LOOP (requestAnimationFrame)
+       * ------------------------------------------------------------- */
+      function updateHmiVisuals(overallState) {
+        // A. Primary Status Banner
+        const badge = els.mainStatusBadge;
+        const text = els.mainStatusText;
+
+        badge.className = 'status-badge';
+        const st = (overallState || 'STOP').toUpperCase();
+
+        if (st === 'RUN') {
+          badge.classList.add('state-run');
+          text.textContent = 'RUN';
+        } else if (st === 'WARNING') {
+          badge.classList.add('state-warning');
+          text.textContent = 'WARNING';
+        } else if (st === 'FAULT' || st === 'EMERGENCY') {
+          badge.classList.add('state-fault');
+          text.textContent = 'FAULT';
+        } else {
+          badge.classList.add('state-stop');
+          text.textContent = 'STOP';
+        }
+
+        // B. Metrics & Numbers
+        els.rpmDisplay.textContent = Math.round(state.actualRpm);
+        els.freqDisplay.textContent = (state.actualRpm / 60.0).toFixed(1);
+        els.metricSeq.textContent = state.seqCounter;
+
+        // Current RMS value (from Pi if valid, else local)
+        const displayRms = (state.linkStatus === 'CONNECTED' && state.piState.rms !== undefined) 
+          ? state.piState.rms 
+          : state.localRms;
+        
+        els.rmsValueDisplay.textContent = displayRms.toFixed(2);
+
+        // Color RMS Card based on thresholds
+        els.vibrationMetricCard.className = 'metric-card';
+        if (displayRms >= CONFIG.critRmsThreshold) {
+          els.vibrationMetricCard.classList.add('crit');
+        } else if (displayRms >= CONFIG.warnRmsThreshold) {
+          els.vibrationMetricCard.classList.add('warn');
+        }
+
+        // Temperature Card
+        els.tempValueDisplay.textContent = state.temperature.toFixed(1);
+        const tempPercent = Math.min(100, Math.max(0, ((state.temperature - 20) / (90 - 20)) * 100));
+        els.tempBarFill.style.width = tempPercent + '%';
+
+        els.tempMetricCard.className = 'metric-card';
+        if (state.temperature >= CONFIG.critTempThreshold) {
+          els.tempMetricCard.classList.add('crit');
+          els.tempBarFill.style.backgroundColor = 'var(--status-stop)';
+        } else if (state.temperature >= CONFIG.warnTempThreshold) {
+          els.tempMetricCard.classList.add('warn');
+          els.tempBarFill.style.backgroundColor = 'var(--status-warn)';
+        } else {
+          els.tempBarFill.style.backgroundColor = 'var(--status-run)';
+        }
+
+        // Power Lamp
+        if (state.actualRpm > 50) {
+          els.powerLamp.className = 'power-lamp on';
+          els.powerLampText.textContent = 'MOTOR RUNNING';
+        } else if (!state.relayEnergized) {
+          els.powerLamp.className = 'power-lamp fault';
+          els.powerLampText.textContent = 'SAFETY LOCKOUT';
+        } else {
+          els.powerLamp.className = 'power-lamp';
+          els.powerLampText.textContent = 'POWER STANDBY';
+        }
+
+        // Pi Response Card
+        els.piStateVal.textContent = state.piState.state || '--';
+        els.piRelayVal.textContent = state.piState.relay ? 'CLOSED' : 'OPEN';
+        els.piRelayVal.style.color = state.piState.relay ? 'var(--status-run)' : 'var(--status-stop)';
+        els.piRmsVal.textContent = state.piState.rms !== undefined ? (state.piState.rms.toFixed(2) + 'g') : '--';
+        els.piZoneVal.textContent = state.piState.worker_in_zone ? 'VIOLATION' : 'CLEAR';
+        els.piZoneVal.style.color = state.piState.worker_in_zone ? 'var(--status-stop)' : 'var(--status-run)';
+        els.piReasonVal.textContent = state.piState.reason || 'None';
+      }
+
+      function updateLinkStatus(status) {
+        state.linkStatus = status;
+        els.linkBadge.className = 'link-badge';
+
+        if (status === 'CONNECTED') {
+          els.linkBadge.classList.add('connected');
+          els.linkStatusText.textContent = 'Pi Link: Connected';
+        } else if (status === 'LOST') {
+          els.linkBadge.classList.add('lost');
+          els.linkStatusText.textContent = 'Pi Link: Lost';
+        } else {
+          els.linkBadge.classList.add('demo');
+          els.linkStatusText.textContent = 'Local Demo Mode (No Pi)';
+        }
+      }
+
+      /* -------------------------------------------------------------
+       * 9. ANIMATION LOOP: SVG ROTATION & MOTOR SHAKE & CANVAS
+       * ------------------------------------------------------------- */
+      let lastRenderTime = performance.now();
+      let animFanAngle = 0;
+
+      function renderFrame(now) {
+        const delta = (now - lastRenderTime) / 1000;
+        lastRenderTime = now;
+
+        // A. Rotate SVG Fan & Output Wheel proportional to actual RPM
+        const revsPerSec = state.actualRpm / 60.0;
+        animFanAngle = (animFanAngle + revsPerSec * 360 * delta) % 360;
+
+        if (els.fanRotorGroup) {
+          els.fanRotorGroup.setAttribute('transform', `translate(32, 110) rotate(${animFanAngle.toFixed(1)})`);
+        }
+        if (els.pulleyRotorGroup) {
+          els.pulleyRotorGroup.setAttribute('transform', `translate(301, 110) rotate(${animFanAngle.toFixed(1)})`);
+        }
+
+        // B. Shake whole motor chassis in proportion to vibration
+        if (els.motorChassisGroup) {
+          const currentVibRms = (state.localRms || 0.15) * (state.actualRpm / CONFIG.nominalRpm);
+          // Scale visual shake: 0.15g -> ~0.3px, 0.60g -> ~3.5px
+          const shakeMag = Math.max(0, currentVibRms * 5.0);
+          const jitterX = (Math.random() - 0.5) * shakeMag;
+          const jitterY = (Math.random() - 0.5) * shakeMag;
+          els.motorChassisGroup.setAttribute('transform', `translate(${jitterX.toFixed(2)}, ${jitterY.toFixed(2)})`);
+        }
+
+        // C. Render scrolling canvas waveform
+        renderWaveformCanvas();
+
+        requestAnimationFrame(renderFrame);
+      }
+      requestAnimationFrame(renderFrame);
+
+      /* -------------------------------------------------------------
+       * 10. CANVAS WAVEFORM RENDERING
+       * ------------------------------------------------------------- */
+      const canvas = els.waveformCanvas;
+      const ctx = canvas.getContext('2d');
+
+      function renderWaveformCanvas() {
+        const w = canvas.width;
+        const h = canvas.height;
+
+        // Clear canvas
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, 0, w, h);
+
+        // Drawing bounds & scale
+        // Range: -1.0g to +1.0g dynamic vibration around zero line
+        // Center line is 0.0g dynamic (corresponds to static 1.0g on Z)
+        const midY = h / 2;
+        const gScale = (h / 2) * 0.85; // 0.85 of half-height for 1.0 g
+
+        // Grid lines
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+
+        // Vertical time grid ticks (every 1 second = 5 divisions)
+        for (let i = 1; i <= 5; i++) {
+          const x = (w / 5) * i;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, h);
+          ctx.stroke();
+        }
+
+        // Horizontal grid ticks: +0.5g, 0g, -0.5g
+        ctx.beginPath();
+        ctx.moveTo(0, midY);
+        ctx.lineTo(w, midY);
+        ctx.strokeStyle = '#94a3b8';
+        ctx.stroke();
+
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.beginPath();
+        ctx.moveTo(0, midY - 0.5 * gScale);
+        ctx.lineTo(w, midY - 0.5 * gScale);
+        ctx.moveTo(0, midY + 0.5 * gScale);
+        ctx.lineTo(w, midY + 0.5 * gScale);
+        ctx.stroke();
+
+        // Axis Labels
+        ctx.fillStyle = '#64748b';
+        ctx.font = '9px monospace';
+        ctx.fillText('0.0g', 6, midY - 3);
+        ctx.fillText('+0.5g', 6, midY - 0.5 * gScale - 3);
+        ctx.fillText('-0.5g', 6, midY + 0.5 * gScale - 3);
+
+        // THRESHOLD LINES:
+        // Warning: 0.40 g (Amber dashed)
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 1.2;
+
+        const warnYPos = midY - (CONFIG.warnRmsThreshold * gScale);
+        const warnYNeg = midY + (CONFIG.warnRmsThreshold * gScale);
+        ctx.beginPath();
+        ctx.moveTo(0, warnYPos);
+        ctx.lineTo(w, warnYPos);
+        ctx.moveTo(0, warnYNeg);
+        ctx.lineTo(w, warnYNeg);
+        ctx.stroke();
+        ctx.fillStyle = '#d97706';
+        ctx.fillText('+0.40g WARN', w - 75, warnYPos - 3);
+
+        // Critical: 0.55 g (Red dashed)
+        ctx.strokeStyle = '#dc2626';
+        const critYPos = midY - (CONFIG.critRmsThreshold * gScale);
+        const critYNeg = midY + (CONFIG.critRmsThreshold * gScale);
+        ctx.beginPath();
+        ctx.moveTo(0, critYPos);
+        ctx.lineTo(w, critYPos);
+        ctx.moveTo(0, critYNeg);
+        ctx.lineTo(w, critYNeg);
+        ctx.stroke();
+        ctx.fillStyle = '#dc2626';
+        ctx.fillText('+0.55g CRIT', w - 75, critYPos - 3);
+
+        ctx.setLineDash([]); // Reset dash
+
+        // Draw waveform trace
+        if (waveformBuffer.length < 2) return;
+
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+
+        const xStep = w / (maxWaveformPoints - 1);
+        const startIndex = maxWaveformPoints - waveformBuffer.length;
+
+        for (let i = 0; i < waveformBuffer.length; i++) {
+          const sample = waveformBuffer[i];
+          const x = (startIndex + i) * xStep;
+          
+          // dynamic acceleration: remove 1.0g static gravity
+          const dynamicZ = sample[2] - 1.0;
+          const y = midY - (dynamicZ * gScale);
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+
+      /* -------------------------------------------------------------
+       * 11. USER INTERACTION & CONTROLS
+       * ------------------------------------------------------------- */
+      // START Button
+      els.btnStart.addEventListener('click', function() {
+        // Interlock Check: if Pi says STOP or relay is open, do not start
+        if (!state.relayEnergized) {
+          showInterlockNotice('Cannot START: Safety interlock active (Relay is open)');
+          logEvent('warn', 'Start command rejected: Safety relay is open.');
+          return;
+        }
+
+        if (state.bearingFaultActive || state.overheatFaultActive || state.workerInZone) {
+          showInterlockNotice('Cannot START: Clear active faults before restarting.');
+          logEvent('warn', 'Start rejected: Critical faults still active.');
+          return;
+        }
+
+        state.commandedRun = true;
+        logEvent('info', 'START command issued by operator.');
+      });
+
+      // STOP Button
+      els.btnStop.addEventListener('click', function() {
+        state.commandedRun = false;
+        logEvent('info', 'STOP command issued by operator.');
+      });
+
+      function showInterlockNotice(msg) {
+        els.interlockNotice.textContent = '⚠ ' + msg;
+        els.interlockNotice.style.display = 'block';
+        setTimeout(() => {
+          els.interlockNotice.style.display = 'none';
+        }, 3000);
+      }
+
+      // Load Slider
+      els.loadSlider.addEventListener('input', function(e) {
+        state.loadPercent = parseInt(e.target.value, 10);
+        els.loadValueText.textContent = state.loadPercent;
+      });
+
+      // Bearing Fault Button
+      els.btnBearingFault.addEventListener('click', function() {
+        state.bearingFaultActive = !state.bearingFaultActive;
+        if (state.bearingFaultActive) {
+          els.btnBearingFault.classList.add('btn-active-fault');
+          logEvent('warn', 'FAULT INJECTED: Bearing vibration fault (3-5x amplitude ramp).');
+        } else {
+          els.btnBearingFault.classList.remove('btn-active-fault');
+          logEvent('info', 'Bearing fault cleared.');
+        }
+      });
+
+      // Overheat Fault Button
+      els.btnOverheatFault.addEventListener('click', function() {
+        state.overheatFaultActive = !state.overheatFaultActive;
+        if (state.overheatFaultActive) {
+          els.btnOverheatFault.classList.add('btn-active-fault');
+          logEvent('warn', 'FAULT INJECTED: Motor overheating (+1.5°C/s ramp).');
+        } else {
+          els.btnOverheatFault.classList.remove('btn-active-fault');
+          logEvent('info', 'Overheat fault cleared.');
+        }
+      });
+
+      // Clear All Faults Button
+      els.btnClearFaults.addEventListener('click', function() {
+        state.bearingFaultActive = false;
+        state.overheatFaultActive = false;
+        state.workerInZone = false;
+        els.toggleWorkerZone.checked = false;
+        els.btnBearingFault.classList.remove('btn-active-fault');
+        els.btnOverheatFault.classList.remove('btn-active-fault');
+        
+        // Reset relay if it was tripped locally
+        if (!state.relayEnergized) {
+          state.relayEnergized = true;
+          applySafetyRelayAction(true, 'STOP', 'Faults cleared by operator');
+        }
+
+        logEvent('info', 'All simulated faults cleared. Returning to normal.');
+      });
+
+      // Worker in Restricted Zone Toggle
+      els.toggleWorkerZone.addEventListener('change', function(e) {
+        state.workerInZone = e.target.checked;
+        if (state.workerInZone) {
+          logEvent('trip', 'SAFETY ZONE INTRUSION: Simulated worker detected in restricted zone.');
+        } else {
+          logEvent('info', 'Safety zone cleared: No worker in zone.');
+        }
+      });
+
+      // Pi Address Input & LocalStorage
+      els.piAddressInput.addEventListener('change', function(e) {
+        const val = e.target.value.trim();
+        state.piAddress = val;
+        localStorage.setItem(STORAGE_KEY_PI_ADDR, val);
+        logEvent('info', 'Pi address set to: ' + (val || '[Empty - Demo Mode]'));
+      });
+
+      // Connect / Disconnect Toggle Button
+      els.btnConnectToggle.addEventListener('click', function() {
+        state.piConnectedMode = !state.piConnectedMode;
+        if (state.piConnectedMode) {
+          els.btnConnectToggle.textContent = 'Disconnect';
+          state.lastSuccessTime = Date.now();
+          updateLinkStatus('LOST'); // Initial state while connecting
+          logEvent('info', 'Network link enabled. Attempting connection to Pi...');
+        } else {
+          els.btnConnectToggle.textContent = 'Connect';
+          updateLinkStatus('DEMO');
+          logEvent('info', 'Switched to Local Demo Mode (No Pi).');
+        }
+      });
+
+      /* -------------------------------------------------------------
+       * 12. EVENT AUDIT LOG
+       * ------------------------------------------------------------- */
+      function logEvent(type, message) {
+        const d = new Date();
+        const timeStr = d.toTimeString().split(' ')[0] + '.' + String(d.getMilliseconds()).padStart(3, '0');
+
+        const row = document.createElement('div');
+        row.className = `log-entry ${type}`;
+        row.innerHTML = `<span class="time">[${timeStr}]</span> <span class="msg">${escapeHtml(message)}</span>`;
+
+        els.eventLog.appendChild(row);
+
+        // Keep last 20 entries
+        while (els.eventLog.childNodes.length > 20) {
+          els.eventLog.removeChild(els.eventLog.firstChild);
+        }
+
+        // Scroll to bottom
+        els.eventLog.scrollTop = els.eventLog.scrollHeight;
+      }
+
+      function escapeHtml(text) {
+        return text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+    })();
+  </script>
+</body>
+</html>
